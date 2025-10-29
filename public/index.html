@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>SaveX Dashboard</title>
+    <link rel="stylesheet" href="css/style.css" />
+    <link
+      rel="stylesheet"
+      href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css"
+    />
+    <style>
+      body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+      }
+      .header-bar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-bottom: 2px solid #ccc;
+        background-color: #fff;
+        z-index: 1000;
+      }
+      .header-bar img {
+        max-height: 99px;
+        cursor: pointer;
+      }
+      .main-content {
+        padding: 120px 20px 20px 20px;
+        text-align: center;
+      }
+      .process-box {
+        border: 1px solid #ccc;
+        padding: 20px;
+        margin: 10px;
+        background-color: #f8f8f8;
+        border-radius: 8px;
+        min-height: 100px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        cursor: pointer;
+        transition: background-color 0.2s;
+      }
+      .process-box:hover {
+        background-color: #e0e0e0;
+      }
+      #process-container {
+        display: none;
+        text-align: left;
+        padding: 150px 20px 20px 20px;
+      }
+      .back-btn {
+        margin-bottom: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header-bar">
+      <img src="logo.png" alt="SaveX Logo" onclick="goDashboard()" />
+    </div>
+
+    <!-- Dashboard -->
+    <div class="main-content" id="dashboard">
+      <div class="row">
+        <div class="col-sm-6">
+          <div class="process-box" id="onboardingBtn">Customer Onboarding</div>
+        </div>
+        <div class="col-sm-6">
+          <div class="process-box">Loan Application</div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-sm-6">
+          <div class="process-box">Loan Closure</div>
+        </div>
+        <div class="col-sm-6">
+          <div class="process-box">Complaint Management</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Dynamic step container -->
+    <div id="process-container"></div>
+
+    <script src="js/config.js"></script>
+    <script type="module">
+      import {startOnboarding} from "./js/Customer_onboarding.js";
+
+      document.getElementById("onboardingBtn").addEventListener("click", () => {
+        document.getElementById("dashboard").style.display = "none";
+        document.getElementById("process-container").style.display = "block";
+        document.getElementById("process-container").style.padding = "150px";
+
+        document.getElementById("dashboard").style.display = "none";
+
+        startOnboarding();
+      });
+
+      function goDashboard() {
+        document.getElementById("process-container").style.display = "none";
+        document.getElementById("process-container").innerHTML = "";
+        document.getElementById("dashboard").style.display = "block";
+      }
+
+      window.goDashboard = goDashboard;
+    </script>
+  </body>
+</html>
+
+<!-- 
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>SaveX Dashboard</title>
+    <link rel="stylesheet" href="css/style.css" />
+    <link
+      rel="stylesheet"
+      href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css"
+    />
+  </head>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+    }
+
+    .header-bar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-bottom: 2px solid #ccc;
+      background-color: #fff;
+      z-index: 1000;
+    }
+
+    .header-bar img {
+      max-height: 99px;
+      height: auto;
+      display: block;
+      cursor: pointer;
+    }
+
+    .main-content {
+      padding: 120px 20px 20px 20px;
+      text-align: center;
+    }
+
+    .process-box {
+      border: 1px solid #ccc;
+      padding: 20px;
+      margin: 10px;
+      background-color: #f8f8f8;
+      border-radius: 8px;
+      min-height: 100px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+
+    .process-box:hover {
+      background-color: #e0e0e0;
+    }
+
+    .process-container {
+      display: none;
+      text-align: left;
+      padding: 150px; /* same as main-content to avoid header overlap */
+    }
+
+    .back-btn {
+      margin-bottom: 20px;
+    }
+  </style>
+  <body>
+    <div class="header-bar">
+      <img src="logo.png" alt="SaveX Logo" onclick="goDashboard()" />
+    </div>
+
+    <div class="main-content" id="dashboard">
+      <div class="row">
+        <div class="col-sm-6">
+          <div
+            class="process-box"
+            onclick="openProcess('personal/personal.html')"
+          >
+            Customer Onboarding
+          </div>
+        </div>
+        <div class="col-sm-6">
+          <div class="process-box">Loan Application</div>
+        </div>
+        <div class="row">
+          <div class="col-sm-6">
+            <div class="process-box">Loan Closure</div>
+          </div>
+          <div class="col-sm-6">
+            <div class="process-box">Complaint Management</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="process-container"></div>
+
+    <script src="js/config.js"></script>
+    <script>
+      function openProcess(file) {
+        const container = document.getElementById("process-container");
+        fetch(file)
+          .then((r) => r.text())
+          .then((html) => {
+            document.getElementById("dashboard").style.display = "none";
+            container.innerHTML = `<div style="padding: 120px;">${html}</div>`;
+            container.style.display = "block";
+          });
+      }
+
+      function goDashboard() {
+        document.getElementById("process-container").innerHTML = "";
+        document.getElementById("dashboard").style.display = "block";
+      }
+    </script>
+  </body>
+</html> -->
