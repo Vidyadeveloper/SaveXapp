@@ -6,7 +6,16 @@ function renderStep(stepIndex) {
   const container = document.getElementById("process-container");
   const step = onboardingSteps[stepIndex];
 
-  let html = `<h2>${step.title}</h2><form id="stepForm">`;
+  // Breadcrumb / header
+  const processName = "Customer Onboarding";
+  const stageName = step.title;
+
+  let html = `
+    <div class="breadcrumb">
+      Process: ${processName} &gt; ${stageName} &gt; Step: ${step.step}
+    </div>
+    <form id="stepForm">
+  `;
 
   step.fields.forEach((f) => {
     if (f.type === "select") {
@@ -16,7 +25,7 @@ function renderStep(stepIndex) {
         f.required ? "required" : ""
       }>
           <option value="">Select</option>
-          ${f.options.map((o) => `<option>${o}</option>`).join("")}
+          ${f.options.map((o) => `<option value="${o}">${o}</option>`).join("")}
         </select>
       </div>`;
     } else {
@@ -24,7 +33,7 @@ function renderStep(stepIndex) {
         <label>${f.label}</label>
         <input type="${f.type}" id="${f.id}" class="form-control" ${
         f.required ? "required" : ""
-      }/>
+      } ${f.readonly ? "readonly" : ""}/>
       </div>`;
     }
   });
@@ -35,9 +44,18 @@ function renderStep(stepIndex) {
 
   container.innerHTML = html;
 
+  // Auto-fill Customer ID in Step-3
+  if (step.id === "account") {
+    const storedId = localStorage.getItem("customerId");
+    if (storedId) {
+      document.getElementById("customer_id").value = storedId;
+    }
+  }
+
   document.getElementById("stepForm").addEventListener("submit", async (e) => {
     e.preventDefault();
 
+    // Collect form data
     const formData = {};
     step.fields.forEach((f) => {
       if (f.type === "file") {
@@ -47,26 +65,65 @@ function renderStep(stepIndex) {
       }
     });
 
-    // Send data to backend
-    //const API_URL = `${API_BASE_URL}/access`;
+    // Determine API URL
+    let API_URL = "";
+    if (step.id === "personal") API_URL = "/api/personal";
+    if (step.id === "kyc") API_URL = "/api/kyc";
+    if (step.id === "account") API_URL = "/api/account";
 
-    const res = await fetch("/api/personal", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify(formData),
-    });
+    try {
+      let options;
 
-    const result = await res.json();
-    console.log("DB response:", result);
+      // KYC Step uses FormData for files
+      if (step.id === "kyc") {
+        const data = new FormData();
 
-    console.log(`Step ${step.id} submitted:`, formData);
+        // Add all fields + customerId
+        step.fields.forEach((f) => {
+          if (f.type === "file") {
+            data.append(f.id, formData[f.id]);
+          } else {
+            data.append(f.id, formData[f.id]);
+          }
+        });
 
-    if (stepIndex < onboardingSteps.length - 1) {
-      currentStep++;
-      renderStep(currentStep);
-    } else {
-      alert("All steps completed ✅");
-      window.goDashboard();
+        const storedId = localStorage.getItem("customerId");
+        if (storedId) data.append("customerId", storedId);
+
+        options = {method: "POST", body: data};
+      } else {
+        // Personal & Account steps send JSON
+        if (step.id === "account") {
+          formData.customerId = localStorage.getItem("customerId");
+          delete formData.customer_id; // remove old field if present
+        }
+        options = {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(formData),
+        };
+      }
+
+      const res = await fetch(API_URL, options);
+      const result = await res.json();
+      console.log("DB response:", result);
+
+      // Save customerId after personal step
+      if (step.id === "personal" && result.customerId) {
+        localStorage.setItem("customerId", result.customerId);
+      }
+
+      // Move to next step or finish
+      if (stepIndex < onboardingSteps.length - 1) {
+        currentStep++;
+        renderStep(currentStep);
+      } else {
+        alert("All steps completed ✅");
+        if (window.goDashboard) window.goDashboard();
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Network or server error. Check console.");
     }
   });
 }

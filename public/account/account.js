@@ -2,10 +2,10 @@ const API_URL = `${API_BASE_URL}/account`;
 
 document.getElementById("accountForm").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const employeeId = localStorage.getItem("employeeId");
+  const customer_id = localStorage.getItem("customer_id");
 
   const accountData = {
-    employeeId,
+    customer_id,
     accountType: document.getElementById("accountType").value,
     commMode: document.getElementById("commMode").value,
   };
@@ -19,7 +19,7 @@ document.getElementById("accountForm").addEventListener("submit", async (e) => {
     const data = await res.json();
     if (data.success) {
       alert("✅ Onboarding Complete");
-      localStorage.removeItem("employeeId");
+      localStorage.removeItem("customer_id");
       window.location.href = "../../index.html"; // back to dashboard
     } else {
       alert("Error: " + data.error);

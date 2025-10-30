@@ -19,7 +19,7 @@ document
       });
       const data = await res.json();
       if (data.success) {
-        localStorage.setItem("employeeId", data.employeeId);
+        localStorage.setItem("customer_id", data.customerId);
         // Load KYC step dynamically
         fetch("../kyc/kyc.html")
           .then((r) => r.text())

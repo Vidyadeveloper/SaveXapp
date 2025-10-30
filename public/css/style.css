@@ -4,3 +4,23 @@ body {
 h2 {
   margin-bottom: 20px;
 }
+.breadcrumb {
+  font-size: 16px;
+  font-weight: bold;
+  margin-bottom: 20px;
+  color: #333;
+}
+
+.breadcrumb span {
+  color: #666;
+}
+
+.breadcrumb a {
+  text-decoration: none;
+  color: #007bff;
+  margin-right: 5px;
+}
+
+.breadcrumb a:hover {
+  text-decoration: underline;
+}
