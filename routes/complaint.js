@@ -1,16 +1,31 @@
+// routes/complaint.js
 const express = require("express");
 const router = express.Router();
 const db = require("../db");
 const multer = require("multer");
 
+let uuidv4;
+
+(async () => {
+  try {
+    // Dynamic import returns a Promise that resolves to the module object
+    const {v4} = await import("uuid");
+    uuidv4 = v4; // Assign the v4 function to the global uuidv4 variable
+    console.log("✅ UUID module loaded successfully.");
+  } catch (e) {
+    console.error("❌ Failed to load uuid module:", e);
+    // Handle error, e.g., exit process if critical
+  }
+})();
 // Setup file upload (for supporting evidence)
 const upload = multer({dest: "uploads/"});
 
-// Initialize complaints table
+// Initialize complaints table with process fields
 const initTable = async () => {
   const sql = `
     CREATE TABLE IF NOT EXISTS complaints (
       id INT AUTO_INCREMENT PRIMARY KEY,
+      process_id VARCHAR(50) NOT NULL,
       complaint_id VARCHAR(50) UNIQUE NOT NULL,
       customer_id INT NOT NULL,
       category VARCHAR(50),
@@ -25,16 +40,22 @@ const initTable = async () => {
       resolution_summary TEXT,
       resolution_date DATE,
       customer_ack VARCHAR(10),
+      process_status VARCHAR(20) DEFAULT 'started',
+      process_step VARCHAR(100) DEFAULT 'Registration',
+      process_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `;
   db.query(sql, (err) => {
     if (err) console.error("❌ Complaint table init error:", err);
-    else console.log("✅ Complaint table ready");
+    else console.log("✅ Complaint table ready with process tracking");
   });
 };
 initTable();
 
+// -------------------------
+// Step 1: Registration
+// -------------------------
 router.post("/registration", (req, res) => {
   const {
     complaint_id,
@@ -51,27 +72,46 @@ router.post("/registration", (req, res) => {
       .json({success: false, error: "Missing required fields"});
   }
 
+  const process_id = uuidv4(); // Generate new process_id for this complaint
+
   const sql = `
     INSERT INTO complaints 
-      (complaint_id, customer_id, category, description, date_received, priority)
-    VALUES (?, ?, ?, ?, ?, ?)
+      (process_id, complaint_id, customer_id, category, description, date_received, priority, process_status, process_step, process_timestamp)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'started', 'Registration', CURRENT_TIMESTAMP)
   `;
 
   db.query(
     sql,
-    [complaint_id, customer_id, category, description, date_received, priority],
+    [
+      process_id,
+      complaint_id,
+      customer_id,
+      category,
+      description,
+      date_received,
+      priority,
+    ],
     (err, result) => {
       if (err)
         return res.status(500).json({success: false, error: err.message});
-      res.json({success: true, complaintId: complaint_id});
+      res.json({
+        success: true,
+        complaintId: complaint_id,
+        processId: process_id,
+      });
     }
   );
 });
+
+// -------------------------
+// Step 2: Investigation
+// -------------------------
 router.post(
   "/investigation",
   upload.single("supporting_evidence"),
   (req, res) => {
     const {
+      process_id,
       customer_id,
       assigned_dept,
       assigned_officer,
@@ -79,7 +119,13 @@ router.post(
       complaint_id,
     } = req.body;
 
-    if (!complaint_id || !customer_id || !assigned_dept || !assigned_officer) {
+    if (
+      !process_id ||
+      !complaint_id ||
+      !customer_id ||
+      !assigned_dept ||
+      !assigned_officer
+    ) {
       return res
         .status(400)
         .json({success: false, error: "Missing required fields"});
@@ -90,8 +136,11 @@ router.post(
       assigned_dept = ?,
       assigned_officer = ?,
       investigation_notes = ?,
-      supporting_evidence = ?
-    WHERE complaint_id = ? AND customer_id = ?
+      supporting_evidence = ?,
+      process_status = 'updated',
+      process_step = 'Investigation',
+      process_timestamp = CURRENT_TIMESTAMP
+    WHERE process_id = ? AND complaint_id = ? AND customer_id = ?
   `;
 
     db.query(
@@ -101,6 +150,7 @@ router.post(
         assigned_officer,
         investigation_notes || null,
         req.file?.path || null,
+        process_id,
         complaint_id,
         customer_id,
       ],
@@ -113,8 +163,12 @@ router.post(
   }
 );
 
+// -------------------------
+// Step 3: Resolution
+// -------------------------
 router.post("/resolution", (req, res) => {
   const {
+    process_id,
     customer_id,
     complaint_id,
     resolution_type,
@@ -124,6 +178,7 @@ router.post("/resolution", (req, res) => {
   } = req.body;
 
   if (
+    !process_id ||
     !complaint_id ||
     !customer_id ||
     !resolution_type ||
@@ -139,8 +194,11 @@ router.post("/resolution", (req, res) => {
       resolution_type = ?,
       resolution_summary = ?,
       resolution_date = ?,
-      customer_ack = ?
-    WHERE complaint_id = ? AND customer_id = ?
+      customer_ack = ?,
+      process_status = 'completed',
+      process_step = 'Resolution',
+      process_timestamp = CURRENT_TIMESTAMP
+    WHERE process_id = ? AND complaint_id = ? AND customer_id = ?
   `;
 
   db.query(
@@ -150,6 +208,7 @@ router.post("/resolution", (req, res) => {
       resolution_summary,
       resolution_date,
       customer_ack,
+      process_id,
       complaint_id,
       customer_id,
     ],

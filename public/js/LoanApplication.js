@@ -49,7 +49,7 @@ function renderStep(stepIndex) {
 
   container.innerHTML = html;
 
-  // Auto fill Customer ID
+  // Auto-fill Customer ID
   const custId = localStorage.getItem("customerId");
   const custField = document.getElementById("customer_id");
   if (custField && custId) custField.value = custId;
@@ -63,72 +63,64 @@ function renderStep(stepIndex) {
         const file = document.getElementById(f.id).files[0];
         if (file) formData[f.id] = file;
       } else {
-        formData[f.id] = document.getElementById(f.id).value;
+        formData[f.id] = document.getElementById(f.id).value.trim();
       }
     });
 
-    // ✅ Application ID added for next steps
+    // ✅ Handle process_id correctly
+    if (step.id === "loan_request") {
+      delete formData.process_id; // Backend generates process_id
+    } else {
+      formData.process_id = localStorage.getItem("processId") || "";
+    }
+
+    // Application ID tracking
     const applicationId = localStorage.getItem("applicationId");
     if (applicationId && step.id !== "loan_request") {
       formData.application_id = applicationId;
     }
 
-    // ✅ Business Rules Checks
-    if (step.id === "loan_request") {
-      const loanAmount = parseFloat(formData["loan_amount"]);
-      const propertyValue = parseFloat(formData["property_value"]);
-      if (loanAmount / propertyValue > 0.8) {
-        alert("Loan-to-Value > 80% – Requires review.");
+    try {
+      let API_URL = `/api/loan/${step.id}`;
+      let options = {method: "POST"};
+
+      if (step.id === "document_collection") {
+        const fd = new FormData();
+        Object.keys(formData).forEach((key) => fd.append(key, formData[key]));
+        options.body = fd;
+      } else {
+        options.headers = {"Content-Type": "application/json"};
+        options.body = JSON.stringify(formData);
       }
-    }
 
-    if (step.id === "evaluation") {
-      const dti = parseFloat(formData["dti_ratio"]);
-      if (dti > 50) {
-        alert("DTI > 50% – Not eligible.");
+      const res = await fetch(API_URL, options);
+      if (!res.ok) {
+        const msg = await res.text();
+        alert(`❌ Error: ${msg}`);
+        return;
       }
-    }
 
-    // ✅ API Endpoint
-    const API_URL = `/api/loan/${step.id}`;
+      const result = await res.json();
 
-    let options = {method: "POST"};
+      // Save processId and applicationId after stage 1
+      if (step.id === "loan_request" && result.applicationId) {
+        localStorage.setItem("applicationId", result.applicationId);
+        localStorage.setItem("processId", result.processId);
+      }
 
-    if (step.id === "document_collection") {
-      // ✅ FormData for files
-      const fd = new FormData();
-      Object.keys(formData).forEach((key) => fd.append(key, formData[key]));
-      options.body = fd;
-    } else {
-      // ✅ JSON for all other steps
-      options.headers = {"Content-Type": "application/json"};
-      options.body = JSON.stringify(formData);
-    }
-
-    const res = await fetch(API_URL, options);
-
-    if (!res.ok) {
-      const msg = await res.text();
-      alert(`❌ Error: ${msg}`);
-      return;
-    }
-
-    const result = await res.json();
-
-    // ✅ Save Application ID from Step 1
-    if (step.id === "loan_request" && result.applicationId) {
-      localStorage.setItem("applicationId", result.applicationId);
-    }
-
-    // ✅ Move forward normally
-    if (stepIndex < loanApplicationSteps.length - 1) {
-      alert("✅ Data saved successfully");
-      currentStep++;
-      renderStep(currentStep);
-    } else {
-      alert("🎉 Loan Application Completed Successfully!");
-      localStorage.removeItem("applicationId");
-      if (window.goDashboard) window.goDashboard();
+      if (stepIndex < loanApplicationSteps.length - 1) {
+        alert("✅ Data saved successfully");
+        currentStep++;
+        renderStep(currentStep);
+      } else {
+        alert("🎉 Loan Application Completed Successfully!");
+        localStorage.removeItem("applicationId");
+        localStorage.removeItem("processId");
+        if (window.goDashboard) window.goDashboard();
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Network or server error. Check console.");
     }
   });
 }

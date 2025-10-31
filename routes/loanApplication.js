@@ -1,75 +1,71 @@
 const express = require("express");
 const router = express.Router();
-const db = require("../db"); // Assuming your database connection is here
+const db = require("../db");
 const multer = require("multer");
+let uuidv4;
 
-// 💾 File upload setup
-// Creates a folder named 'uploads' in your root directory if it doesn't exist.
+(async () => {
+  try {
+    // Dynamic import returns a Promise that resolves to the module object
+    const {v4} = await import("uuid");
+    uuidv4 = v4; // Assign the v4 function to the global uuidv4 variable
+    console.log("✅ UUID module loaded successfully.");
+  } catch (e) {
+    console.error("❌ Failed to load uuid module:", e);
+    // Handle error, e.g., exit process if critical
+  }
+})();
+// File upload setup
 const upload = multer({dest: "uploads/"});
 
 // --- TABLE INITIALIZATION ---
-
 const initLoanApplicationsTable = () => {
-  console.log("ℹ️ Checking/Creating loan_applications table...");
   const createTableSql = `
     CREATE TABLE IF NOT EXISTS loan_applications (
       id INT AUTO_INCREMENT PRIMARY KEY,
       customer_id INT NOT NULL,
-
-      -- Stage 1: Loan Request Fields
+      process_id VARCHAR(50) NOT NULL,
       property_type VARCHAR(50) NOT NULL,
       property_address VARCHAR(255) NOT NULL,
-      property_value DECIMAL(15, 2) NOT NULL,
-      desired_loan_amount DECIMAL(15, 2) NOT NULL,
+      property_value DECIMAL(15,2) NOT NULL,
+      desired_loan_amount DECIMAL(15,2) NOT NULL,
       tenure INT NOT NULL,
       loan_purpose VARCHAR(255) NOT NULL,
-
-      -- Stage 2: Document Collection Fields (NULLable as they are updated later)
       employer_name VARCHAR(255) NULL,
-      annual_income DECIMAL(15, 2) NULL,
+      annual_income DECIMAL(15,2) NULL,
       pay_slips VARCHAR(255) NULL,
       property_ownership_papers VARCHAR(255) NULL,
       sale_agreement VARCHAR(255) NULL,
-
-      -- Stage 3: Evaluation Fields (NULLable as they are updated later)
       credit_score INT NULL,
-      debt_to_income_ratio DECIMAL(5, 2) NULL,
-      risk_category ENUM('Low', 'Medium', 'High') DEFAULT 'Low',
-      approved_amount DECIMAL(15, 2) NULL,
-      interest_rate DECIMAL(5, 3) NULL,
+      debt_to_income_ratio DECIMAL(5,2) NULL,
+      risk_category ENUM('Low','Medium','High') DEFAULT 'Low',
+      approved_amount DECIMAL(15,2) NULL,
+      interest_rate DECIMAL(5,3) NULL,
       approval_date DATE NULL,
       approver_name VARCHAR(255) NULL,
-
-      -- Stage 4: Disbursement Fields (NULLable as they are updated later)
       loan_account VARCHAR(50) NULL,
-      disbursement_amount DECIMAL(15, 2) NULL,
+      disbursement_amount DECIMAL(15,2) NULL,
       disbursement_date DATE NULL,
       beneficiary_iban VARCHAR(50) NULL,
       transaction_ref VARCHAR(100) NULL,
-
-      -- Status and Timestamps
-      application_status ENUM('Requested', 'Documents Pending', 'Under Review', 'Approved', 'Disbursed', 'Rejected') DEFAULT 'Requested',
+      application_status ENUM('Requested','Documents Pending','Under Review','Approved','Disbursed','Rejected') DEFAULT 'Requested',
+      process_status VARCHAR(20) DEFAULT 'started',
+      process_step VARCHAR(100) DEFAULT 'Registration',
+      process_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `;
-
   db.query(createTableSql, (err) => {
-    if (err) {
-      console.error("❌ Error creating loan_applications table:", err);
-    } else {
-      console.log("✅ loan_applications table initialized successfully.");
-    }
+    if (err) console.error("❌ Error creating loan_applications table:", err);
+    else console.log("✅ loan_applications table initialized successfully.");
   });
 };
 
-// Initialize the table when the router loads
 initLoanApplicationsTable();
 
-// --- LOAN APPLICATION ENDPOINTS ---
-// All subsequent stages (2, 3, 4) will update the record using the unique 'id' (applicationId)
-// generated in Stage 1.
-
-// Stage 1: Loan Request (Creates the new application record)
+// -------------------------
+// Stage 1: Loan Request
+// -------------------------
 router.post("/loan_request", (req, res) => {
   const {
     customer_id,
@@ -81,7 +77,6 @@ router.post("/loan_request", (req, res) => {
     loan_purpose,
   } = req.body;
 
-  // Input Validation
   if (
     !customer_id ||
     !property_type ||
@@ -93,21 +88,21 @@ router.post("/loan_request", (req, res) => {
   ) {
     return res
       .status(400)
-      .json({
-        success: false,
-        error: "Missing required fields for loan request.",
-      });
+      .json({success: false, error: "Missing required fields"});
   }
+
+  const process_id = uuidv4();
 
   const sql = `
     INSERT INTO loan_applications
-      (customer_id, property_type, property_address, property_value, desired_loan_amount, tenure, loan_purpose)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+      (process_id, customer_id, property_type, property_address, property_value, desired_loan_amount, tenure, loan_purpose, process_status, process_step, process_timestamp)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'started', 'Registration', CURRENT_TIMESTAMP)
   `;
 
   db.query(
     sql,
     [
+      process_id,
       customer_id,
       property_type,
       property_address,
@@ -119,14 +114,18 @@ router.post("/loan_request", (req, res) => {
     (err, result) => {
       if (err)
         return res.status(500).json({success: false, error: err.message});
-
-      // 🔑 Important: Return the new ID for subsequent stages
-      res.json({success: true, applicationId: result.insertId});
+      res.json({
+        success: true,
+        processId: process_id,
+        applicationId: result.insertId,
+      });
     }
   );
 });
 
-// Stage 2: Document Collection (Updates the existing application record)
+// -------------------------
+// Stage 2: Document Collection
+// -------------------------
 router.post(
   "/document_collection",
   upload.fields([
@@ -135,20 +134,14 @@ router.post(
     {name: "sale_agreement", maxCount: 1},
   ]),
   (req, res) => {
-    // 💡 Using 'application_id' instead of 'customer_id' for uniqueness
-    const {application_id, employer_name, annual_income} = req.body;
+    const {process_id, employer_name, annual_income} = req.body;
 
-    // Input Validation
-    if (!application_id || !employer_name || !annual_income) {
+    if (!process_id || !employer_name || !annual_income) {
       return res
         .status(400)
-        .json({
-          success: false,
-          error: "Missing required fields for document collection.",
-        });
+        .json({success: false, error: "Missing required fields"});
     }
 
-    // Get file paths (will be null if file is not uploaded)
     const pay_slips = req.files["pay_slips"]?.[0]?.path || null;
     const property_ownership_papers =
       req.files["property_ownership_papers"]?.[0]?.path || null;
@@ -161,8 +154,11 @@ router.post(
         pay_slips = ?,
         property_ownership_papers = ?,
         sale_agreement = ?,
-        application_status = 'Documents Pending'
-      WHERE id = ?  /* 🔑 WHERE clause uses the unique application ID */
+        application_status = 'Documents Pending',
+        process_status = 'in_progress',
+        process_step = 'Document Collection',
+        process_timestamp = CURRENT_TIMESTAMP
+      WHERE process_id = ?
     `;
 
     db.query(
@@ -173,7 +169,7 @@ router.post(
         pay_slips,
         property_ownership_papers,
         sale_agreement,
-        application_id, // Use the application_id
+        process_id,
       ],
       (err, result) => {
         if (err)
@@ -184,10 +180,12 @@ router.post(
   }
 );
 
-// Stage 3: Evaluation (Updates the existing application record)
+// -------------------------
+// Stage 3: Evaluation
+// -------------------------
 router.post("/evaluation", (req, res) => {
   const {
-    application_id, // 💡 Using 'application_id'
+    process_id,
     credit_score,
     debt_to_income_ratio,
     risk_category,
@@ -197,9 +195,8 @@ router.post("/evaluation", (req, res) => {
     approver_name,
   } = req.body;
 
-  // Input Validation
   if (
-    !application_id ||
+    !process_id ||
     !credit_score ||
     !debt_to_income_ratio ||
     !risk_category ||
@@ -210,7 +207,7 @@ router.post("/evaluation", (req, res) => {
   ) {
     return res
       .status(400)
-      .json({success: false, error: "Missing required fields for evaluation."});
+      .json({success: false, error: "Missing required fields"});
   }
 
   const sql = `
@@ -222,8 +219,11 @@ router.post("/evaluation", (req, res) => {
       interest_rate = ?,
       approval_date = ?,
       approver_name = ?,
-      application_status = 'Approved'
-    WHERE id = ? /* 🔑 WHERE clause uses the unique application ID */
+      application_status = 'Approved',
+      process_status = 'in_progress',
+      process_step = 'Evaluation',
+      process_timestamp = CURRENT_TIMESTAMP
+    WHERE process_id = ?
   `;
 
   db.query(
@@ -236,7 +236,7 @@ router.post("/evaluation", (req, res) => {
       interest_rate,
       approval_date,
       approver_name,
-      application_id, // Use the application_id
+      process_id,
     ],
     (err, result) => {
       if (err)
@@ -246,10 +246,12 @@ router.post("/evaluation", (req, res) => {
   );
 });
 
-// Stage 4: Disbursement (Updates the existing application record)
+// -------------------------
+// Stage 4: Disbursement
+// -------------------------
 router.post("/disbursement", (req, res) => {
   const {
-    application_id, // 💡 Using 'application_id'
+    process_id,
     loan_account,
     disbursement_amount,
     disbursement_date,
@@ -257,9 +259,8 @@ router.post("/disbursement", (req, res) => {
     transaction_ref,
   } = req.body;
 
-  // Input Validation
   if (
-    !application_id ||
+    !process_id ||
     !loan_account ||
     !disbursement_amount ||
     !disbursement_date ||
@@ -268,10 +269,7 @@ router.post("/disbursement", (req, res) => {
   ) {
     return res
       .status(400)
-      .json({
-        success: false,
-        error: "Missing required fields for disbursement.",
-      });
+      .json({success: false, error: "Missing required fields"});
   }
 
   const sql = `
@@ -281,8 +279,11 @@ router.post("/disbursement", (req, res) => {
       disbursement_date = ?,
       beneficiary_iban = ?,
       transaction_ref = ?,
-      application_status = 'Disbursed'
-    WHERE id = ? /* 🔑 WHERE clause uses the unique application ID */
+      application_status = 'Disbursed',
+      process_status = 'completed',
+      process_step = 'Disbursement',
+      process_timestamp = CURRENT_TIMESTAMP
+    WHERE process_id = ?
   `;
 
   db.query(
@@ -293,7 +294,7 @@ router.post("/disbursement", (req, res) => {
       disbursement_date,
       beneficiary_iban,
       transaction_ref,
-      application_id, // Use the application_id
+      process_id,
     ],
     (err, result) => {
       if (err)

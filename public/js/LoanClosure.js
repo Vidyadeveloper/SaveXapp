@@ -39,67 +39,54 @@ function renderStep(stepIndex) {
   }</button></form>`;
   container.innerHTML = html;
 
-  // Auto-fill Customer ID from localStorage
-  const custIdField = document.getElementById("customer_id");
-  if (custIdField) {
-    const storedId = localStorage.getItem("customerId");
-    if (storedId) custIdField.value = storedId;
-  }
-
   document.getElementById("stepForm").addEventListener("submit", async (e) => {
     e.preventDefault();
 
     const formData = {};
+
+    // Collect values from the form (editable)
     step.fields.forEach((f) => {
       if (f.type === "file") {
         formData[f.id] = document.getElementById(f.id).files[0];
       } else {
-        formData[f.id] = document.getElementById(f.id).value;
+        formData[f.id] = document.getElementById(f.id).value.trim();
       }
     });
 
-    // Always attach customerId from previous steps
-    formData.customer_id =
-      localStorage.getItem("customerId") || formData.customer_id;
-
-    // Business Logic: Payment Settlement & Foreclosure Penalty
-    if (step.id === "payment_settlement") {
-      const closureReason = document.getElementById("closure_reason")?.value;
-      const principalDue = parseFloat(formData["principal_due"] || 0);
-      const interestDue = parseFloat(formData["interest_due"] || 0);
-      let total = principalDue + interestDue;
-
-      if (closureReason === "Foreclosure") {
-        const penalty = total * 0.02;
-        formData["penalties"] = penalty;
-        formData["total_payable"] = total + penalty;
-        alert(`Foreclosure Penalty Applied: €${penalty}`);
-      } else {
-        formData["total_payable"] = total;
-      }
-
-      if (total <= 0) {
-        alert("Closure not eligible: outstanding dues must be cleared.");
-        return;
-      }
+    // Ensure customer_id is always from input field
+    if (!formData.customer_id) {
+      alert("Customer ID is required");
+      return;
     }
 
     try {
-      let res;
+      let res, result;
 
       if (step.id === "closure_request") {
         formData.loan_account_no = formData.loan_account;
-        localStorage.setItem("loanAccountNo", formData.loan_account_no); // save it
-
         delete formData.loan_account;
+
+        // POST request for step 1
         res = await fetch("/api/loan-closure/request", {
           method: "POST",
           headers: {"Content-Type": "application/json"},
           body: JSON.stringify(formData),
         });
+
+        result = await res.json(); // parse JSON
+
+        if (result.success && result.processId) {
+          // store processId for subsequent steps
+          localStorage.setItem("processId", result.processId);
+          localStorage.setItem("loanAccountNo", formData.loan_account_no);
+        } else {
+          alert("Error creating closure request: " + result.error);
+          return;
+        }
       } else if (step.id === "payment_settlement") {
-        formData.loan_account_no =
-          formData.loan_account_no || localStorage.getItem("loanAccountNo");
+        // get processId from localStorage
+        formData.process_id = localStorage.getItem("processId") || "";
+        formData.loan_account_no = localStorage.getItem("loanAccountNo");
 
         formData.outstanding_principal = parseFloat(
           formData.outstanding_principal || 0
@@ -108,9 +95,8 @@ function renderStep(stepIndex) {
         formData.penalties = parseFloat(formData.penalties || 0);
         formData.total_payable = parseFloat(formData.total_payable || 0);
 
-        // Read payment mode from select
-        formData.payment_mode = document.getElementById("payment_mode").value;
-
+        formData.payment_mode =
+          document.getElementById("payment_mode")?.value || "";
         if (!formData.payment_mode) {
           alert("Please select a payment mode");
           return;
@@ -122,16 +108,17 @@ function renderStep(stepIndex) {
           body: JSON.stringify(formData),
         });
 
-        console.log("Settlement data sent:", formData);
+        result = await res.json();
+
+        if (!result.success) {
+          alert("Error in payment settlement: " + result.error);
+          return;
+        }
       } else if (step.id === "finalization") {
         const data = new FormData();
-
-        // Always get from localStorage
-        const customerId = localStorage.getItem("customerId");
-        const loanAccountNo = localStorage.getItem("loanAccountNo");
-
-        data.append("customer_id", customerId);
-        data.append("loan_account_no", loanAccountNo);
+        data.append("customer_id", formData.customer_id);
+        data.append("loan_account_no", localStorage.getItem("loanAccountNo"));
+        data.append("process_id", localStorage.getItem("processId"));
 
         data.append(
           "closure_confirmation_date",
@@ -148,12 +135,17 @@ function renderStep(stepIndex) {
           method: "POST",
           body: data,
         });
+
+        result = await res.json();
+
+        if (!result.success) {
+          alert("Error in finalization: " + result.error);
+          return;
+        }
       }
 
-      const result = await res.json();
       console.log("Backend response:", result);
 
-      // Move to next step or finish
       if (stepIndex < loanClosureSteps.length - 1) {
         currentStep++;
         renderStep(currentStep);

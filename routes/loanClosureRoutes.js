@@ -3,6 +3,18 @@ const router = express.Router();
 const db = require("../db");
 const multer = require("multer");
 
+let uuidv4;
+
+(async () => {
+  try {
+    const {v4} = await import("uuid");
+    uuidv4 = v4;
+    console.log("✅ UUID module loaded successfully.");
+  } catch (e) {
+    console.error("❌ Failed to load uuid module:", e);
+  }
+})();
+
 // File upload setup (for Closure Certificate)
 const upload = multer({dest: "uploads/"});
 
@@ -11,7 +23,8 @@ const initTable = async () => {
   const sql = `
     CREATE TABLE IF NOT EXISTS loan_closures (
       id INT AUTO_INCREMENT PRIMARY KEY,
-      customer_id INT NOT NULL,
+      customer_id VARCHAR(50) NOT NULL,
+      process_id VARCHAR(50) NOT NULL,
       loan_account_no VARCHAR(50) NOT NULL,
       closure_reason VARCHAR(50),
       requested_date DATE,
@@ -24,6 +37,9 @@ const initTable = async () => {
       closure_certificate VARCHAR(255),
       lien_release_date DATE,
       confirmation_email VARCHAR(100),
+      process_status VARCHAR(20) DEFAULT 'started',
+      process_step VARCHAR(100) DEFAULT 'Registration',
+      process_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `;
@@ -45,18 +61,24 @@ router.post("/request", (req, res) => {
       .json({success: false, error: "Missing required fields"});
   }
 
+  const process_id = uuidv4(); // Generate a new process ID
+
   const sql = `
     INSERT INTO loan_closures
-      (customer_id, loan_account_no, closure_reason, requested_date)
-    VALUES (?, ?, ?, ?)
+      (process_id, customer_id, loan_account_no, closure_reason, requested_date, process_status, process_step, process_timestamp)
+    VALUES (?, ?, ?, ?, ?, 'started', 'Registration', CURRENT_TIMESTAMP)
   `;
   db.query(
     sql,
-    [customer_id, loan_account_no, closure_reason, requested_date],
+    [process_id, customer_id, loan_account_no, closure_reason, requested_date],
     (err, result) => {
       if (err)
         return res.status(500).json({success: false, error: err.message});
-      res.json({success: true, closureId: result.insertId});
+      res.json({
+        success: true,
+        processId: process_id,
+        closureId: result.insertId,
+      });
     }
   );
 });
@@ -64,6 +86,7 @@ router.post("/request", (req, res) => {
 // Stage 2: Payment Settlement
 router.post("/settlement", (req, res) => {
   const {
+    process_id,
     customer_id,
     loan_account_no,
     outstanding_principal,
@@ -74,6 +97,7 @@ router.post("/settlement", (req, res) => {
   } = req.body;
 
   if (
+    !process_id ||
     !customer_id ||
     !loan_account_no ||
     total_payable === undefined ||
@@ -91,7 +115,7 @@ router.post("/settlement", (req, res) => {
       penalties = ?,
       total_payable = ?,
       payment_mode = ?
-    WHERE customer_id = ? AND loan_account_no = ?
+    WHERE process_id = ? AND customer_id = ? AND loan_account_no = ?
   `;
 
   db.query(
@@ -102,6 +126,7 @@ router.post("/settlement", (req, res) => {
       penalties,
       total_payable,
       payment_mode,
+      process_id,
       customer_id,
       loan_account_no,
     ],
@@ -116,6 +141,7 @@ router.post("/settlement", (req, res) => {
 // Stage 3: Finalization
 router.post("/finalize", upload.single("closure_certificate"), (req, res) => {
   const {
+    process_id,
     customer_id,
     loan_account_no,
     closure_confirmation_date,
@@ -123,7 +149,12 @@ router.post("/finalize", upload.single("closure_certificate"), (req, res) => {
     confirmation_email,
   } = req.body;
 
-  if (!customer_id || !loan_account_no || !closure_confirmation_date) {
+  if (
+    !process_id ||
+    !customer_id ||
+    !loan_account_no ||
+    !closure_confirmation_date
+  ) {
     return res
       .status(400)
       .json({success: false, error: "Missing required fields"});
@@ -135,7 +166,7 @@ router.post("/finalize", upload.single("closure_certificate"), (req, res) => {
       closure_certificate = ?,
       lien_release_date = ?,
       confirmation_email = ?
-    WHERE customer_id = ? AND loan_account_no = ?
+    WHERE process_id = ? AND customer_id = ? AND loan_account_no = ?
   `;
 
   db.query(
@@ -145,6 +176,7 @@ router.post("/finalize", upload.single("closure_certificate"), (req, res) => {
       req.file?.path || null,
       lien_release_date || null,
       confirmation_email || null,
+      process_id,
       customer_id,
       loan_account_no,
     ],

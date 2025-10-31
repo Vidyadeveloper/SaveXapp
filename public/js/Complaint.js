@@ -13,6 +13,7 @@ function renderStep(stepIndex) {
     <form id="stepForm">
   `;
 
+  // Render all fields
   step.fields.forEach((f) => {
     if (f.type === "select") {
       html += `<div class="form-group">
@@ -39,20 +40,12 @@ function renderStep(stepIndex) {
   }</button></form>`;
   container.innerHTML = html;
 
-  const storedCustomerId = localStorage.getItem("customerId");
-  const custIdField = document.getElementById("customer_id");
-  if (custIdField && storedCustomerId) {
-    custIdField.value = storedCustomerId;
-  }
-
-  // Auto-generate Complaint ID for registration step
+  // Auto-generate complaint ID in registration step
   if (step.id === "registration") {
     const complaintField = document.getElementById("complaint_id");
     if (complaintField) {
       const complaintId = `CMP-${Date.now()}`;
       complaintField.value = complaintId;
-
-      // ✅ Save complaint_id in localStorage immediately
       localStorage.setItem("complaintId", complaintId);
     }
   }
@@ -60,17 +53,14 @@ function renderStep(stepIndex) {
   document.getElementById("stepForm").addEventListener("submit", async (e) => {
     e.preventDefault();
 
+    // Prepare form data
     const formData = {};
     step.fields.forEach((f) => {
       if (f.type === "file") {
         formData[f.id] = document.getElementById(f.id).files[0];
       } else {
-        // Always ensure customer_id is sent
-        if (f.id === "customer_id") {
-          formData[f.id] = storedCustomerId || "";
-        } else {
-          formData[f.id] = document.getElementById(f.id).value;
-        }
+        // Take Customer ID from input field (user typed value)
+        formData[f.id] = document.getElementById(f.id).value;
       }
     });
 
@@ -78,25 +68,34 @@ function renderStep(stepIndex) {
       let res;
 
       if (step.id === "registration" || step.id === "resolution") {
+        if (step.id === "resolution") {
+          formData.process_id = localStorage.getItem("processId") || "";
+          formData.complaint_id = localStorage.getItem("complaintId") || "";
+        }
+
         res = await fetch(`/api/complaint/${step.id}`, {
           method: "POST",
           headers: {"Content-Type": "application/json"},
           body: JSON.stringify(formData),
         });
 
-        // ✅ Save complaint_id from backend response (if you want)
         const result = await res.json();
-        if (step.id === "registration" && result.complaintId) {
+
+        if (
+          step.id === "registration" &&
+          result.complaintId &&
+          result.processId
+        ) {
           localStorage.setItem("complaintId", result.complaintId);
+          localStorage.setItem("processId", result.processId);
         }
+
         console.log("Backend response:", result);
       } else if (step.id === "investigation") {
-        // FormData for file upload
         const data = new FormData();
         Object.keys(formData).forEach((key) => data.append(key, formData[key]));
-
-        // ✅ Append complaint_id from localStorage
         data.append("complaint_id", localStorage.getItem("complaintId") || "");
+        data.append("process_id", localStorage.getItem("processId") || "");
 
         res = await fetch(`/api/complaint/investigation`, {
           method: "POST",
@@ -107,16 +106,14 @@ function renderStep(stepIndex) {
         console.log("Backend response:", result);
       }
 
-      // Move to next step or finish
       if (stepIndex < complaintSteps.length - 1) {
         currentStep++;
         renderStep(currentStep);
       } else {
         alert("Complaint Process Completed ✅");
         if (window.goDashboard) window.goDashboard();
-        // Cleanup localStorage
         localStorage.removeItem("complaintId");
-        localStorage.removeItem("customerId");
+        localStorage.removeItem("processId");
       }
     } catch (err) {
       console.error(err);

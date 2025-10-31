@@ -8,8 +8,6 @@ export const loanClosureSteps = [
         label: "Customer ID",
         type: "text",
         id: "customer_id",
-        required: true,
-        readonly: true,
       },
       {
         label: "Loan Account Number",
@@ -41,8 +39,6 @@ export const loanClosureSteps = [
         label: "Customer ID",
         type: "text",
         id: "customer_id",
-        required: true,
-        readonly: true,
       },
       {
         label: "Outstanding Principal (€)",
@@ -87,7 +83,6 @@ export const loanClosureSteps = [
         type: "text",
         id: "customer_id",
         required: true,
-        readonly: true,
       },
       {
         label: "Closure Confirmation Date",
