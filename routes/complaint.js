@@ -3,7 +3,7 @@ const express = require("express");
 const router = express.Router();
 const db = require("../db");
 const multer = require("multer");
-
+const logProcessEvent = require(".././utils/logProcessEvent");
 let uuidv4;
 
 (async () => {
@@ -52,10 +52,6 @@ const initTable = async () => {
   });
 };
 initTable();
-
-// -------------------------
-// Step 1: Registration
-// -------------------------
 router.post("/registration", (req, res) => {
   const {
     complaint_id,
@@ -73,11 +69,16 @@ router.post("/registration", (req, res) => {
   }
 
   const process_id = uuidv4(); // Generate new process_id for this complaint
+  const stage = "Complaint Registration";
+  const step = "Capture Complaint";
+
+  // Log StepStarted
+  logProcessEvent("Complaint Management", stage, step, "started");
 
   const sql = `
     INSERT INTO complaints 
       (process_id, complaint_id, customer_id, category, description, date_received, priority, process_status, process_step, process_timestamp)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'started', 'Registration', CURRENT_TIMESTAMP)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'started', ?, CURRENT_TIMESTAMP)
   `;
 
   db.query(
@@ -90,10 +91,18 @@ router.post("/registration", (req, res) => {
       description,
       date_received,
       priority,
+      stage,
     ],
     (err, result) => {
-      if (err)
+      if (err) {
+        // Log StepFailure
+        logProcessEvent("Complaint Management", stage, step, "failed");
         return res.status(500).json({success: false, error: err.message});
+      }
+
+      // Log StepCompletion
+      logProcessEvent("Complaint Management", stage, step, "completed");
+
       res.json({
         success: true,
         complaintId: complaint_id,
@@ -131,17 +140,23 @@ router.post(
         .json({success: false, error: "Missing required fields"});
     }
 
+    const stage = "Investigation";
+    const step = "Assign and Analyze";
+
+    // Log StepStarted
+    logProcessEvent("Complaint Management", stage, step, "started");
+
     const sql = `
-    UPDATE complaints SET
-      assigned_dept = ?,
-      assigned_officer = ?,
-      investigation_notes = ?,
-      supporting_evidence = ?,
-      process_status = 'updated',
-      process_step = 'Investigation',
-      process_timestamp = CURRENT_TIMESTAMP
-    WHERE process_id = ? AND complaint_id = ? AND customer_id = ?
-  `;
+      UPDATE complaints SET
+        assigned_dept = ?,
+        assigned_officer = ?,
+        investigation_notes = ?,
+        supporting_evidence = ?,
+        process_status = 'updated',
+        process_step = ?,
+        process_timestamp = CURRENT_TIMESTAMP
+      WHERE process_id = ? AND complaint_id = ? AND customer_id = ?
+    `;
 
     db.query(
       sql,
@@ -150,13 +165,21 @@ router.post(
         assigned_officer,
         investigation_notes || null,
         req.file?.path || null,
+        stage,
         process_id,
         complaint_id,
         customer_id,
       ],
       (err, result) => {
-        if (err)
+        if (err) {
+          // Log StepFailure
+          logProcessEvent("Complaint Management", stage, step, "failed");
           return res.status(500).json({success: false, error: err.message});
+        }
+
+        // Log StepCompletion
+        logProcessEvent("Complaint Management", stage, step, "completed");
+
         res.json({success: true});
       }
     );
@@ -189,6 +212,12 @@ router.post("/resolution", (req, res) => {
       .json({success: false, error: "Missing required fields"});
   }
 
+  const stage = "Resolution";
+  const step = "Provide Resolution";
+
+  // Log StepStarted
+  logProcessEvent("Complaint Management", stage, step, "started");
+
   const sql = `
     UPDATE complaints SET
       resolution_type = ?,
@@ -196,7 +225,7 @@ router.post("/resolution", (req, res) => {
       resolution_date = ?,
       customer_ack = ?,
       process_status = 'completed',
-      process_step = 'Resolution',
+      process_step = ?,
       process_timestamp = CURRENT_TIMESTAMP
     WHERE process_id = ? AND complaint_id = ? AND customer_id = ?
   `;
@@ -208,16 +237,23 @@ router.post("/resolution", (req, res) => {
       resolution_summary,
       resolution_date,
       customer_ack,
+      stage,
       process_id,
       complaint_id,
       customer_id,
     ],
     (err, result) => {
-      if (err)
+      if (err) {
+        // Log StepFailure
+        logProcessEvent("Complaint Management", stage, step, "failed");
         return res.status(500).json({success: false, error: err.message});
+      }
+
+      // Log StepCompletion
+      logProcessEvent("Complaint Management", stage, step, "completed");
+
       res.json({success: true});
     }
   );
 });
-
 module.exports = router;

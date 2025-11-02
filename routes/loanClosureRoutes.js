@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const db = require("../db");
 const multer = require("multer");
+const logProcessEvent = require(".././utils/logProcessEvent");
 
 let uuidv4;
 
@@ -62,6 +63,10 @@ router.post("/request", (req, res) => {
   }
 
   const process_id = uuidv4(); // Generate a new process ID
+  const stage = "Closure Request";
+  const step = "Initiate Closure";
+
+  logProcessEvent("Loan Closure", stage, step, "started");
 
   const sql = `
     INSERT INTO loan_closures
@@ -72,8 +77,11 @@ router.post("/request", (req, res) => {
     sql,
     [process_id, customer_id, loan_account_no, closure_reason, requested_date],
     (err, result) => {
-      if (err)
+      if (err) {
+        logProcessEvent("Loan Closure", stage, step, "failed");
         return res.status(500).json({success: false, error: err.message});
+      }
+      logProcessEvent("Loan Closure", stage, step, "completed");
       res.json({
         success: true,
         processId: process_id,
@@ -108,6 +116,11 @@ router.post("/settlement", (req, res) => {
       .json({success: false, error: "Missing required fields"});
   }
 
+  const stage = "Payment Settlement";
+  const step = "Calculate Dues";
+
+  logProcessEvent("Loan Closure", stage, step, "started");
+
   const sql = `
     UPDATE loan_closures SET
       outstanding_principal = ?,
@@ -131,9 +144,12 @@ router.post("/settlement", (req, res) => {
       loan_account_no,
     ],
     (err, result) => {
-      if (err)
+      if (err) {
+        logProcessEvent("Loan Closure", stage, step, "failed");
         return res.status(500).json({success: false, error: err.message});
-      res.json({success: true});
+      }
+      logProcessEvent("Loan Closure", stage, step, "completed");
+      res.json({success: true, updatedRows: result.affectedRows});
     }
   );
 });
@@ -160,6 +176,11 @@ router.post("/finalize", upload.single("closure_certificate"), (req, res) => {
       .json({success: false, error: "Missing required fields"});
   }
 
+  const stage = "Finalization";
+  const step = "Confirm Closure";
+
+  logProcessEvent("Loan Closure", stage, step, "started");
+
   const sql = `
     UPDATE loan_closures SET
       closure_confirmation_date = ?,
@@ -181,8 +202,13 @@ router.post("/finalize", upload.single("closure_certificate"), (req, res) => {
       loan_account_no,
     ],
     (err, result) => {
-      if (err)
+      if (err) {
+        logProcessEvent("Loan Closure", stage, step, "failed");
+
         return res.status(500).json({success: false, error: err.message});
+      }
+      logProcessEvent("Loan Closure", stage, step, "Completed");
+
       res.json({success: true});
     }
   );

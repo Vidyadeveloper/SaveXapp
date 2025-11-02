@@ -1,26 +1,27 @@
+// routes/loan.js
 const express = require("express");
 const router = express.Router();
 const db = require("../db");
 const multer = require("multer");
-let uuidv4;
+const logProcessEvent = require(".././utils/logProcessEvent");
 
+let uuidv4;
 (async () => {
   try {
-    // Dynamic import returns a Promise that resolves to the module object
     const {v4} = await import("uuid");
-    uuidv4 = v4; // Assign the v4 function to the global uuidv4 variable
+    uuidv4 = v4;
     console.log("✅ UUID module loaded successfully.");
   } catch (e) {
     console.error("❌ Failed to load uuid module:", e);
-    // Handle error, e.g., exit process if critical
   }
 })();
-// File upload setup
+
+// Setup file upload
 const upload = multer({dest: "uploads/"});
 
-// --- TABLE INITIALIZATION ---
+// Initialize loan_applications table
 const initLoanApplicationsTable = () => {
-  const createTableSql = `
+  const sql = `
     CREATE TABLE IF NOT EXISTS loan_applications (
       id INT AUTO_INCREMENT PRIMARY KEY,
       customer_id INT NOT NULL,
@@ -55,16 +56,14 @@ const initLoanApplicationsTable = () => {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `;
-  db.query(createTableSql, (err) => {
+  db.query(sql, (err) => {
     if (err) console.error("❌ Error creating loan_applications table:", err);
     else console.log("✅ loan_applications table initialized successfully.");
   });
 };
-
 initLoanApplicationsTable();
 
-// -------------------------
-// Stage 1: Loan Request
+// Step: Loan Request Details
 // -------------------------
 router.post("/loan_request", (req, res) => {
   const {
@@ -92,11 +91,15 @@ router.post("/loan_request", (req, res) => {
   }
 
   const process_id = uuidv4();
+  const stage = "Application Submission";
+  const step = "Loan Request Details";
+
+  logProcessEvent("Loan Application", stage, step, "started");
 
   const sql = `
     INSERT INTO loan_applications
       (process_id, customer_id, property_type, property_address, property_value, desired_loan_amount, tenure, loan_purpose, process_status, process_step, process_timestamp)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'started', 'Registration', CURRENT_TIMESTAMP)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'started', ?, CURRENT_TIMESTAMP)
   `;
 
   db.query(
@@ -110,10 +113,15 @@ router.post("/loan_request", (req, res) => {
       desired_loan_amount,
       tenure,
       loan_purpose,
+      stage,
     ],
     (err, result) => {
-      if (err)
+      if (err) {
+        logProcessEvent("Loan Application", stage, step, "failed");
         return res.status(500).json({success: false, error: err.message});
+      }
+
+      logProcessEvent("Loan Application", stage, step, "completed");
       res.json({
         success: true,
         processId: process_id,
@@ -125,6 +133,7 @@ router.post("/loan_request", (req, res) => {
 
 // -------------------------
 // Stage 2: Document Collection
+// Step: Income and Property Documents
 // -------------------------
 router.post(
   "/document_collection",
@@ -142,6 +151,11 @@ router.post(
         .json({success: false, error: "Missing required fields"});
     }
 
+    const stage = "Document Collection";
+    const step = "Income and Property Documents";
+
+    logProcessEvent("Loan Application", stage, step, "started");
+
     const pay_slips = req.files["pay_slips"]?.[0]?.path || null;
     const property_ownership_papers =
       req.files["property_ownership_papers"]?.[0]?.path || null;
@@ -156,7 +170,7 @@ router.post(
         sale_agreement = ?,
         application_status = 'Documents Pending',
         process_status = 'in_progress',
-        process_step = 'Document Collection',
+        process_step = ?,
         process_timestamp = CURRENT_TIMESTAMP
       WHERE process_id = ?
     `;
@@ -169,11 +183,16 @@ router.post(
         pay_slips,
         property_ownership_papers,
         sale_agreement,
+        stage,
         process_id,
       ],
       (err, result) => {
-        if (err)
+        if (err) {
+          logProcessEvent("Loan Application", stage, step, "failed");
           return res.status(500).json({success: false, error: err.message});
+        }
+
+        logProcessEvent("Loan Application", stage, step, "completed");
         res.json({success: true, updatedRows: result.affectedRows});
       }
     );
@@ -181,7 +200,8 @@ router.post(
 );
 
 // -------------------------
-// Stage 3: Evaluation
+// Stage 3: Evaluation and Approval
+// Step: Credit and Risk Assessment, Loan Decision
 // -------------------------
 router.post("/evaluation", (req, res) => {
   const {
@@ -210,6 +230,11 @@ router.post("/evaluation", (req, res) => {
       .json({success: false, error: "Missing required fields"});
   }
 
+  const stage = "Evaluation and Approval";
+  const step = "Credit and Risk Assessment, Loan Decision";
+
+  logProcessEvent("Loan Application", stage, step, "started");
+
   const sql = `
     UPDATE loan_applications SET
       credit_score = ?,
@@ -221,7 +246,7 @@ router.post("/evaluation", (req, res) => {
       approver_name = ?,
       application_status = 'Approved',
       process_status = 'in_progress',
-      process_step = 'Evaluation',
+      process_step = ?,
       process_timestamp = CURRENT_TIMESTAMP
     WHERE process_id = ?
   `;
@@ -236,11 +261,16 @@ router.post("/evaluation", (req, res) => {
       interest_rate,
       approval_date,
       approver_name,
+      stage,
       process_id,
     ],
     (err, result) => {
-      if (err)
+      if (err) {
+        logProcessEvent("Loan Application", stage, step, "failed");
         return res.status(500).json({success: false, error: err.message});
+      }
+
+      logProcessEvent("Loan Application", stage, step, "completed");
       res.json({success: true, updatedRows: result.affectedRows});
     }
   );
@@ -248,6 +278,7 @@ router.post("/evaluation", (req, res) => {
 
 // -------------------------
 // Stage 4: Disbursement
+// Step: Fund Transfer
 // -------------------------
 router.post("/disbursement", (req, res) => {
   const {
@@ -272,6 +303,11 @@ router.post("/disbursement", (req, res) => {
       .json({success: false, error: "Missing required fields"});
   }
 
+  const stage = "Disbursement";
+  const step = "Fund Transfer";
+
+  logProcessEvent("Loan Application", stage, step, "started");
+
   const sql = `
     UPDATE loan_applications SET
       loan_account = ?,
@@ -281,7 +317,7 @@ router.post("/disbursement", (req, res) => {
       transaction_ref = ?,
       application_status = 'Disbursed',
       process_status = 'completed',
-      process_step = 'Disbursement',
+      process_step = ?,
       process_timestamp = CURRENT_TIMESTAMP
     WHERE process_id = ?
   `;
@@ -294,11 +330,16 @@ router.post("/disbursement", (req, res) => {
       disbursement_date,
       beneficiary_iban,
       transaction_ref,
+      stage,
       process_id,
     ],
     (err, result) => {
-      if (err)
+      if (err) {
+        logProcessEvent("Loan Application", stage, step, "failed");
         return res.status(500).json({success: false, error: err.message});
+      }
+
+      logProcessEvent("Loan Application", stage, step, "completed");
       res.json({success: true, updatedRows: result.affectedRows});
     }
   );

@@ -5,6 +5,7 @@ const multer = require("multer");
 
 // Save uploaded files to 'uploads' folder
 const upload = multer({dest: "uploads/"});
+const logProcessEvent = require(".././utils/logProcessEvent");
 
 let uuidv4;
 
@@ -77,7 +78,10 @@ router.post("/", (req, res) => {
   }
 
   const process_id = uuidv4();
+  const stage = "Customer Identification";
+  const step = "Capture Personal Details";
 
+  logProcessEvent("Customer Onboarding", stage, step, "started");
   const sql = `
     INSERT INTO customers 
       (process_id, first_name, last_name, dob, national_id, phone, email, street, city, postal_code, country,
@@ -101,8 +105,12 @@ router.post("/", (req, res) => {
       country,
     ],
     (err, result) => {
-      if (err)
+      if (err) {
+        logProcessEvent("Customer Onboarding", stage, step, "failed");
+
         return res.status(500).json({success: false, error: err.message});
+      }
+      logProcessEvent("Customer Onboarding", stage, step, "completed");
 
       res.json({
         success: true,
@@ -144,6 +152,11 @@ router.post(
       WHERE id = ?
     `;
 
+    const stage = "KYC Verification";
+    const step = "Upload and Verify Documents";
+
+    logProcessEvent("Customer Onboarding", stage, step, "started");
+
     db.query(
       sql,
       [
@@ -153,14 +166,17 @@ router.post(
         customerId,
       ],
       (err, result) => {
-        if (err)
-          return res.status(500).json({success: false, error: err.message});
+        if (err) {
+          logProcessEvent("Customer Onboarding", stage, step, "failed");
 
+          return res.status(500).json({success: false, error: err.message});
+        }
         if (result.affectedRows === 0) {
           return res
             .status(404)
             .json({success: false, error: "Customer ID not found"});
         }
+        logProcessEvent("Customer Onboarding", stage, step, "completed");
 
         res.json({
           success: true,
@@ -194,14 +210,22 @@ router.post("/account", (req, res) => {
     WHERE id = ?
   `;
 
+  const stage = "Account Setup";
+  const step = "Create Customer Profile";
+
+  logProcessEvent("Customer Onboarding", stage, step, "started");
+
   db.query(sql, [accountType, communication, customerId], (err, result) => {
     if (err) return res.status(500).json({success: false, error: err.message});
 
     if (result.affectedRows === 0) {
+      logProcessEvent("Customer Onboarding", stage, step, "failed");
+
       return res
         .status(404)
         .json({success: false, error: "Customer ID not found"});
     }
+    logProcessEvent("Customer Onboarding", stage, step, "completed");
 
     res.json({
       success: true,
