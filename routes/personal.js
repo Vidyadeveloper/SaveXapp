@@ -242,7 +242,7 @@ router.post("/account", (req, res) => {
       process_step = 'Account Setup Completed',
       process_status = 'completed',
       process_timestamp = CURRENT_TIMESTAMP
-    WHERE id = ?
+      WHERE customer_id = ?
   `;
 
   const stage = "Account Setup";
@@ -265,6 +265,7 @@ router.post("/account", (req, res) => {
     res.json({
       success: true,
       message: "Account Setup Completed",
+        customerId,
       processStep: "Account Setup Completed",
       processStatus: "completed",
     });
