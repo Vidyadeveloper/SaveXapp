@@ -10,7 +10,7 @@ function renderStep(stepIndex) {
 
   let html = `
     <div class="breadcrumb">
-      Process: ${processName} > ${step.title} > Step: ${step.step}
+    <h1>  Process: ${processName} > ${step.title} > Step: ${step.step}</h1>
     </div>
     <form id="stepForm">
   `;
