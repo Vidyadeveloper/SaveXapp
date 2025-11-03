@@ -89,37 +89,71 @@ router.post("/", (req, res) => {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'started', 'Registration', CURRENT_TIMESTAMP)
   `;
 
-  db.query(
-    sql,
-    [
-      process_id,
-      first_name,
-      last_name,
-      dob,
-      national_id,
-      phone,
-      email,
-      street,
-      city,
-      postal_code,
-      country,
-    ],
-    (err, result) => {
-      if (err) {
-        logProcessEvent("Customer Onboarding", stage, step, "failed");
-
-        return res.status(500).json({success: false, error: err.message});
-      }
-      logProcessEvent("Customer Onboarding", stage, step, "completed");
-
-      res.json({
-        success: true,
-        customerId: result.insertId,
-        processId: process_id,
-        processStep: "Registration",
-      });
+db.query(
+  sql,
+  [
+    process_id,
+    first_name,
+    last_name,
+    dob,
+    national_id,
+    phone,
+    email,
+    street,
+    city,
+    postal_code,
+    country,
+  ],
+  (err, result) => {
+    if (err) {
+      logProcessEvent("Customer Onboarding", stage, step, "failed");
+      return res.status(500).json({success: false, error: err.message});
     }
-  );
+
+    const insertedId = result.insertId;
+
+    const sqlUpdate = `
+      UPDATE customers
+      SET customer_id = CONCAT(
+        'CUST-',
+        DATE_FORMAT(CURRENT_DATE, '%Y%m%d'),
+        '-',
+        LPAD(?, 4, '0')
+      )
+      WHERE id = ?
+    `;
+
+    db.query(sqlUpdate, [insertedId, insertedId], (updateErr) => {
+      if (updateErr) {
+        console.error("❌ Failed to update customer_id:", updateErr);
+      }
+
+      const sqlGetCustomer = `
+        SELECT customer_id FROM customers WHERE id = ?
+      `;
+
+      db.query(sqlGetCustomer, [insertedId], (fetchErr, rows) => {
+        if (fetchErr || rows.length === 0) {
+          return res.status(500).json({
+            success: true,
+            message: "Customer registered but ID fetch failed",
+            processId: process_id,
+          });
+        }
+
+        res.json({
+          success: true,
+          dbId: insertedId, // temporary use, but frontend shouldn’t use it
+          customerId: rows[0].customer_id,
+          processId: process_id,
+          message: "Registration completed",
+        });
+      });
+    });
+  }
+);
+
+
 });
 
 // ✅ Stage 2: KYC Upload → UPDATE with step & timestamp
@@ -149,7 +183,7 @@ router.post(
         process_step = 'KYC Completed',
         process_status = 'in-progress',
         process_timestamp = CURRENT_TIMESTAMP
-      WHERE id = ?
+      WHERE customer_id = ?
     `;
 
     const stage = "KYC Verification";
@@ -181,6 +215,7 @@ router.post(
         res.json({
           success: true,
           message: "KYC Completed",
+            customerId,
           processStep: "KYC Completed",
         });
       }
