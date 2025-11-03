@@ -8,7 +8,7 @@ function renderStep(stepIndex) {
 
   let html = `
     <div class="breadcrumb">
-      Process: Complaint Management &gt; ${step.title} &gt; Step: ${step.step}
+      <h1>Process: Complaint Management &gt; ${step.title} &gt; Step: ${step.step}</h1>
     </div>
     <form id="stepForm">
   `;
